@@ -145,7 +145,7 @@ def predict(image_path, model, gpu = False, topk=5):
     label_index=label_index.cpu().detach().numpy()
     #  
     # Reverse class to index dictionary to index to class
-    index_to_class = {v: k for k, v in model.class_to_idx.items()}
+    index_to_class = {v: k for k, v in model.cp_class_to_idx.items()}
     # 
     i=0
     label_list=[]
@@ -191,19 +191,18 @@ def init_args():
 #
 ##############MAIN########################
 def main():
+    model = None
     print('Predicting...') 
     args=init_args()
     # Load Checkpoint 
-    checkpoint=load_checkpoint(args.checkpoint_path)
-    # Inititalize Model
-    model=model_initializer(checkpoint["architecture"])    
-    # Apply checkpoint to model
-    model = model_customizer(checkpoint, model)
+    # Checkpoint is model
+    model = load_checkpoint(args.checkpoint_path)
     # Run prediction
     probs, labels = predict(args.image_path, model, args.gpu, topk=args.top_k)
     cat_to_name = initialize_cat_to_name(args.category_names)
-    
-    print('Prediction Result: ',args.image_path)
+    #
+    print('Prediction Result: ', args.image_path)
+    print('')
     print('Probability | Flower Name(class)')
     print('--------------------------------')
     for i in range(probs.size):

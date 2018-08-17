@@ -48,7 +48,7 @@ def validate_classifier(model, criterion, testloader, device='cpu'):
     return test_loss, accuracy
 #
 #
-def train_classifier(model, trainloader, testloader, epochs, device = 'cpu', learning_rate = 0.001):
+def train_classifier(model, trainloader, testloader, epochs, device = 'cpu', learning_rate = 0.001, arch='vgg16'):
     """ Trains the classifier of the model.
         Taken From Udacity AI Nanodegree Lesson 4, Section 5
 
@@ -59,13 +59,20 @@ def train_classifier(model, trainloader, testloader, epochs, device = 'cpu', lea
         epochs -- integer, number of epochs to train
         device -- torch device to train on
         learning_rate -- Model learning rate for optimizer
+        arch -- Model architecture
         
         Returns:  model, optimizer
     """
     # Model training
     # Normalize the initial weights
-    model.classifier.fc1.weight.data.normal_(std=0.01)
-    model.classifier.fc2.weight.data.normal_(std=0.01)
+    # Handle resnet architecture differences
+    if arch != 'resnet18':
+        model.classifier.fc1.weight.data.normal_(std=0.01)
+        model.classifier.fc2.weight.data.normal_(std=0.01)
+    else:
+        print(model)
+        model.fc.fc1.weight.data.normal_(std=0.01)
+        model.fc.fc2.weight.data.normal_(std=0.01)
     # Loss function for LogSoftMax
     criterion = nn.NLLLoss()
     # Initialize control variables
@@ -76,7 +83,13 @@ def train_classifier(model, trainloader, testloader, epochs, device = 'cpu', lea
     model.to(device)
     model.train()
     # Set up optimizer after moving model to device
-    optimizer = optim.Adam(model.classifier.parameters(), lr = learning_rate)
+    # Handle architecture differences
+    optimizer =[]
+    if arch != 'resnet18':
+        optimizer = optim.Adam(model.classifier.parameters(), lr = learning_rate)
+    else:
+        optimizer = optim.Adam(model.fc.parameters(), lr = learning_rate)
+        
     for e in range(epochs):  
         for ii,(images, labels) in enumerate(trainloader):
             start = time.time()
@@ -150,7 +163,21 @@ def initialize_dataloaders(data_dir):
        'test': torch.utils.data.DataLoader(image_datasets['test'], batch_size=32)
     }                 
     return data_loaders, image_datasets
-#  
+#
+def get_input_size(model, arch='vgg16'):
+    """ Gets input size of classifier for each supported architecture"""
+     
+    if arch=='vgg16':
+        return model.classifier[0].in_features
+    elif arch=='densenet161':
+        return model.classifier.in_features
+    elif arch=='resnet18':
+        return model.fc.in_features
+    else:
+        print('Unsupported model architecture: ', arch)
+        print('Please use only vgg16, densenet161, or resnet18')
+        raise NameError('Unsupported model architecture')
+#
 def init_args():
     """Parses and Initializes command line arguments
     
@@ -174,7 +201,7 @@ def init_args():
        description = 'Flower Image Training Program',
     )
     parser.add_argument('data_directory', action = 'store', type = str, help = 'Path to images to train and test on.', default='flowers')
-    parser.add_argument('--save_dir', action = 'store', type = str, help = 'Path to model checkpoint folder.', default='')
+    parser.add_argument('--save_dir', action = 'store', type = str, help = 'Path to model checkpoint folder.', default='checkpoints')
     parser.add_argument('--arch', action = 'store', type = str, help = 'A supported pre-trained model architecture, eg: vgg16, densenet161, resnet18.', default = 'vgg16')   
     parser.add_argument('--learning_rate', action = 'store', type = float, help = 'A fractional rate eg 0.001', default = 0.001)
     parser.add_argument('--hidden_units', action = 'store', type = int, help = 'The number of nodes in the classifiers hidden layer.', default = 5000)
@@ -184,13 +211,7 @@ def init_args():
 #
 def main():
     """ Main training program """
-    input_sizes={
-        'vgg16': 25088,
-        'densenet161': 1024,
-        'resnet18': 512
-    }
-    # input sizes 
-    #model.classifier[0].in_features
+    model = None
     args=init_args()
     print(args)
     # Load Data
@@ -198,9 +219,14 @@ def main():
     # Initialize model
     model = model_initializer(args.arch)
     # Customize the classifier
-    input_size = input_sizes[args.arch]
-    output_size = 102
-    model.classifier=classifier_factory(input_size, args.hidden_units, output_size) 
+    input_size =get_input_size(model, args.arch)
+    output_size = 102   
+    classifier = classifier_factory(input_size, args.hidden_units, output_size) 
+    # Handle architectures
+    if args.arch != 'resnet18':
+        model.classifier=classifier         
+    else:
+        model.fc = classifier
     # Train Classifier
     # Set device
     device = torch.device('cpu')
@@ -208,23 +234,17 @@ def main():
         device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
     print('Training on ', device)
     #
-    model, optimizer, criterion = train_classifier(model, data_loaders['train'], data_loaders['test'], args.epochs, device, args.learning_rate)
+    model, optimizer, criterion = train_classifier(model, data_loaders['train'], data_loaders['test'], args.epochs, device, args.learning_rate, args.arch)
      
     print('Saving Checkpoint')
-    checkpoint={
-    'epochs': args.epochs,
-    'optimizer_state': optimizer.state_dict(),
-    'class_to_index': image_datasets['train'].class_to_idx,
-    'input_size': input_size,
-    'output_size': output_size,
-    'hidden_size': args.hidden_units,
-    'state_dict': model.state_dict(),
-    'architecture': args.arch,
-    'gpu': args.gpu
-    }   
+    # cp - custom properties for check point
+    model.cp_class_to_idx = image_datasets['train'].class_to_idx
+    model.cp_optimizer = optimizer
+    model.cp_gpu = args.gpu
+   
     #
     checkpoint_path = args.save_dir+'/checkpoint.pth'
-    torch.save(checkpoint, checkpoint_path)
+    torch.save(model, checkpoint_path)
 # Call Main
 if __name__ == '__main__':
    main()                                                                           

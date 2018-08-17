@@ -11,18 +11,18 @@ def model_initializer(architecture = 'vgg16'):
         Returns: 
         model -- Pretrained model
     """
-    model=nn.Module()
+    print('Architecture: ',architecture)
+    #
     if architecture == 'vgg16':
-        model = models.vgg16(pretrained=True)
+        return models.vgg16(pretrained=True)
     elif  architecture == 'densenet161':
-        model = models.densenet161(pretrained=True)
+        return models.densenet161(pretrained=True)
     elif  architecture == 'resnet18':
-        model = models.resnet18(pretrained=True)
+        return models.resnet18(pretrained=True)
     else:
         print('Unsupported model architecture: ', architecture)
         print('Please use only vgg16, densenet161, or resnet18')
         raise NameError('Unsupported model architecture')
-    return model
 #
 def classifier_factory(input_size, hidden_size, output_size):
     """ Creates a custom one layer fc network with logsoftmax output
@@ -62,7 +62,10 @@ def model_customizer(checkpoint, model):
     for param in model.parameters():
         param.requires_grad = False
     # Replace Classifier
-    model.classifier=classifier
+    # Handle Architectures
+ 
+    model.classifer = classifier
+    print(model)
     # Restore Model
     model.load_state_dict(checkpoint['state_dict'])
     model.class_to_idx = checkpoint['class_to_index']
